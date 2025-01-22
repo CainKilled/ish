@@ -1,0 +1,89 @@
+import os
+import hashlib
+import json
+import shutil
+
+# Configure paths
+SOURCE_DIR = "packages"  # Directory containing packages to validate
+REPO_DIR = "repository"  # Directory where the validated repository will be created
+INDEX_FILE = "index.json"  # Metadata file for the repository
+
+# Create necessary directories
+os.makedirs(REPO_DIR, exist_ok=True)
+
+def calculate_checksum(file_path):
+    """Calculate SHA256 checksum of a file."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+def validate_packages(source_dir):
+    """Validate and organize packages."""
+    valid_packages = []
+    invalid_packages = []
+
+    for root, _, files in os.walk(source_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            checksum = calculate_checksum(file_path)
+
+            # Example validation: check if file is non-empty
+            if os.path.getsize(file_path) > 0:
+                valid_packages.append({
+                    "name": file,
+                    "path": file_path,
+                    "checksum": checksum
+                })
+            else:
+                invalid_packages.append({
+                    "name": file,
+                    "path": file_path,
+                    "reason": "Empty file"
+                })
+
+    return valid_packages, invalid_packages
+
+def index_packages(valid_packages, repo_dir):
+    """Index validated packages into the repository."""
+    index = []
+
+    for package in valid_packages:
+        dest_path = os.path.join(repo_dir, package["name"])
+        shutil.copy(package["path"], dest_path)  # Copy package to repository
+        index.append({
+            "name": package["name"],
+            "checksum": package["checksum"],
+            "location": dest_path
+        })
+
+    return index
+
+def save_index(index, repo_dir, index_file):
+    """Save the package index to a JSON file."""
+    index_path = os.path.join(repo_dir, index_file)
+    with open(index_path, "w") as f:
+        json.dump(index, f, indent=4)
+
+    print(f"Index saved to {index_path}")
+
+# Main script
+def main():
+    print("Validating packages...")
+    valid_packages, invalid_packages = validate_packages(SOURCE_DIR)
+
+    if invalid_packages:
+        print(f"Found {len(invalid_packages)} invalid package(s):")
+        for pkg in invalid_packages:
+            print(f"  - {pkg['name']}: {pkg['reason']}")
+
+    print(f"Validating {len(valid_packages)} package(s)...")
+    index = index_packages(valid_packages, REPO_DIR)
+    save_index(index, REPO_DIR, INDEX_FILE)
+
+    print(f"Indexed {len(valid_packages)} package(s) into {REPO_DIR}.")
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
